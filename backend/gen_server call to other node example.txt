@@ -1,0 +1,4 @@
+(twoname@amit-Lenovo-B50-80)1> gen_server:call({master,'onename@amit-Lenovo-B50-80'},"amit").
+
+erl -name twoname@127.0.0.1 -setcookie sensei
+

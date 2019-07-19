@@ -1,0 +1,65 @@
+0) general:
+	su ubu  --- password: local621
+	sudo -s --- password: local621
+	get all computers ip and host name:
+		hostname (in terminal)
+		ifconfig (in terminal)
+	edit hosts file:
+		pico /etc/hosts
+	edit in each cowboy directory config/name_of_node file 		according to node and port
+
+	cd .erlang.mk/
+	chown 777 relx
+	chmod +x relx
+	
+
+1) start manger:
+	erl -sname master_node -setcookie hello_cowboy
+	gen_server_module:start({master,'master_node@007-lnx-e2',"","","",""}).
+	
+2) start worker:
+	erl -sname worker1_node -setcookie hello_cowboy
+	gen_server_module:start({worker,'master_node@007-lnx-e2',worker1_node,'007-lnx-e3',8070,worker1}).
+
+3) start client:
+	python3 -m http.server
+	
+4)start cowboy
+	sudo make run
+
+5)check state of server
+	from master node:
+		gen_server:call(master,state).
+	from worker node:
+		gen_server:call({master,'master_node@007-lnx-e2'},state).
+	state of worker:
+		gen_server:call(worker1_node,state).
+
+
+
+6) killing al the vms on the machine 
+	ps aux | grep -e heart -e epmd | grep -v grep | tr -s ' ' | cut -d ' ' -f 2 | xargs kill -9
+
+
+For MAC : 
+
+MASTER:
+
+export PATH=/Users/aviranh/.erlangInstaller/21.3/bin:$PATH; clear; erl -name master_node@aviran-h-mbp15.local -setcookie hello_cowboy.
+
+cd("/Users/aviranh/Desktop/Erlang").
+
+c(gen_server_module).
+
+gen_server_module:start({master,'master_node@aviran-h-mbp15.local',"","","",""}).
+
+
+WORKER:
+
+export PATH=/Users/aviranh/.erlangInstaller/21.3/bin:$PATH; clear; erl -name worker1_node@aviran-h-mbp15.local -setcookie hello_cowboy.
+
+cd("/Users/aviranh/Desktop/Erlang").
+
+c(gen_server_module).
+
+gen_server_module:start({worker,'master_node@aviran-h-mbp15.local',worker1_node,'127.0.0.1',8070,worker1}).

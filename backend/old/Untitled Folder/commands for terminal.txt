@@ -1,0 +1,26 @@
+1) start manger:
+	erl -name master_node@127.0.0.1 -setcookie hello_cowboy
+	gen_server_module:start({master,'master_node@127.0.0.1',"","","",""}).
+
+2) start worker:
+	erl -name worker1_node@127.0.0.1 -setcookie hello_cowboy
+	gen_server_module:start({worker,'master_node@127.0.0.1',worker1_node,'127.0.0.1',8070,worker1}).
+
+3) start client:
+	python3 -m http.server
+	
+4)start cowboy
+	sudo make run
+
+5)check state of server
+	from master node:
+		gen_server:call(master,state).
+	from worker node:
+		gen_server:call({master,'master_node@127.0.0.1'},state).
+	state of worker:
+		gen_server:call(worker1_node,state).
+
+
+
+6) killing al the vms on the machine 
+	ps aux | grep -e heart -e epmd | grep -v grep | tr -s ' ' | cut -d ' ' -f 2 | xargs kill -9

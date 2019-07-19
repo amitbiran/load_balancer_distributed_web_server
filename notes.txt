@@ -1,0 +1,18 @@
+handle case when worker terminate and he was the last worker. we dont want master to collapse - done
+
+handle case when user start session but master has no workers - done
+
+delete server from node names when it is going down - done
+
+send message from cowboy to say client is - done
+
+cowboy supportchange of master - done
+
+
+todo
+
+-load ballance when new worker join in
+
+-handle manager collapse
+
+-create dns that gives the ip and port of current manager

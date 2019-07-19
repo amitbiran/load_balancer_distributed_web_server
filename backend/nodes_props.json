@@ -1,0 +1,12 @@
+{
+	"global" : {
+		"cookie" : "hello_cowboy"
+	},
+	"master" : {
+		"process_name" : "master",
+		"node_short_name" : "master_node"
+ 	},
+	"worker1":{
+		"name" : "worker1_node"
+	}
+}

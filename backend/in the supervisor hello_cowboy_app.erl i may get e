@@ -1,0 +1,5 @@
+-in the supervisor hello_cowboy_app.erl i may get error in the getting the root path because it started from a place where i didnt expected it to
+
+- may forgot to put file name in the config folder
+
+-make sure to parse data you get from backend properly

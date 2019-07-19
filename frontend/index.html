@@ -1,0 +1,147 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+
+  <title>The HTML5 Herald</title>
+  <meta name="description" content="The HTML5 Herald">
+  <meta name="author" content="SitePoint">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+
+<script type="text/javascript">
+var uuid = "abc";
+var worker;
+var port = 8080;
+var ip = "127.0.0.1";
+var MasterIp = '127.0.0.1';
+var MasterPort = '8080';
+var done = false;
+var partOfStory={ 
+    uuid: uuid, 
+    part: "1"
+  };
+function test(){
+  console.log(uuid,worker,port,ip,partOfStory);
+}
+
+function httpPost(theUrl,data,callback){
+  $.ajax({
+    type: "POST",
+    headers: { 
+  //      'Accept': 'application/json',
+        'Content-Type': 'application/json' 
+    },
+    url: theUrl,
+    datg: data,
+    success: function(msg){
+          callback(msg);
+    },
+    error: function(xhr, textStatus, error) {
+        console.log(xhr.statusText);
+        console.log(textStatus);
+        console.log(error);  
+    }
+  });
+}
+
+function httpGet(theUrl,data,callback,errorCallback){
+  //use this function to do get requests to a url, give it a callback to handle the response
+  $.ajax({
+    type: "GET",
+      data: data,
+    url: theUrl,
+    success: function(msg){
+          callback(msg);
+    },
+    error: function(xhr, textStatus, error) {
+        console.log(xhr.statusText);
+        console.log(textStatus);
+        console.log(error);
+        if(errorCallback) {
+        errorCallback(); 
+        }
+    }
+  });
+}
+
+function addParagraph(value_to_display){
+  //use this function to add a <p> element to the story div
+  story_div = document.getElementsByName("story_div")[0];
+  new_paragraph = document.createElement("p"); 
+  new_paragraph.innerHTML = value_to_display;
+  story_div.appendChild(new_paragraph);
+}
+
+function startStory(){
+  //we get the uuid of this client as will be saved in the backend 
+  //we get the worker id that the master chose for this client 
+  //we get the port number of the worker that this client should talk to
+  httpGet('http://' + MasterIp + ':' + MasterPort + '/start_story',{},function(data){
+  	 console.log({data});
+     if(data.error){
+        console.log("could not start story");
+     }
+     else{
+      uuid = data.uuid;
+      worker = data.worker_name;
+      port = data.port;
+      ip = data.ip;
+     }
+  });
+}
+
+function getPartOfStroy(){
+  if(done){
+    console.log("story is already over");
+    return;
+  }
+  partOfStory.uuid = uuid;
+  url = 'http://' + ip +':' + port +'/story';
+  httpGet(url,partOfStory,function(resp){
+  	console.log('getPartOfStroy ok', resp);
+    if(resp.status == "ok"){
+      addParagraph(resp.story);
+      temp = parseInt(partOfStory.part) + 1;
+      partOfStory.part = temp.toString();
+      done = resp.done;
+    }
+  }, function() {
+  	console.log('calling redirect');
+  	Redirect();
+  });
+}
+
+
+function Redirect(){
+	URL = 'http://' + MasterIp + ':' + MasterPort + '/redirect';
+	console.log('redirect to master', URL);
+	httpGet(URL,partOfStory,function(resp){
+	console.log('redirect ok', resp);
+    if(resp.status == "redirect"){
+      worker = resp.worker_name;
+    	port = resp.port;
+    	ip = resp.ip;
+    	//getPartOfStroy();
+    }
+  }, function() {
+  	//Redirect();
+  });
+}
+</script>
+
+</head>
+
+<body>
+  <div>I Am Groot</div>
+<input type="button" value="Start New Story" onClick="startStory()">
+<input type="button" value="Get Next Part Of Story" onClick="getPartOfStroy()">
+<input type="button" value="test" onClick="test()">
+
+<div name = "story_div">
+  
+</div>
+
+
+</body>
+</html>

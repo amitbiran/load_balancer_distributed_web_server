@@ -15,4 +15,6 @@ todo
 
 -handle manager collapse
 
+-client
+
 -create dns that gives the ip and port of current manager

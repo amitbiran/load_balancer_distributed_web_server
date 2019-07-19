@@ -1,3 +1,7 @@
+start dns:
+	erl -name dns_node@127.0.0.1 -setcookie hello_cowboy
+	dns_module:start({dns_node,'127.0.0.1',9000}).
+
 1) start manger:
 	erl -name master_node@127.0.0.1 -setcookie hello_cowboy
 	gen_server_module:start({master,'master_node@127.0.0.1',"","","",""}).

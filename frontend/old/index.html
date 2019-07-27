@@ -14,6 +14,9 @@ var uuid = "abc";
 var worker;
 var port = 8080;
 var ip = "127.0.0.1";
+var MasterIp = '007-lnx-e2';
+var MasterPort = '8080';
+var done = false;
 var partOfStory={ 
     uuid: uuid, 
     part: "1"
@@ -42,7 +45,7 @@ function httpPost(theUrl,data,callback){
   });
 }
 
-function httpGet(theUrl,data,callback){
+function httpGet(theUrl,data,callback,errorCallback){
   //use this function to do get requests to a url, give it a callback to handle the response
   $.ajax({
     type: "GET",
@@ -54,7 +57,10 @@ function httpGet(theUrl,data,callback){
     error: function(xhr, textStatus, error) {
         console.log(xhr.statusText);
         console.log(textStatus);
-        console.log(error);  
+        console.log(error);
+        if(errorCallback) {
+        errorCallback(); 
+        }
     }
   });
 }
@@ -71,27 +77,62 @@ function startStory(){
   //we get the uuid of this client as will be saved in the backend 
   //we get the worker id that the master chose for this client 
   //we get the port number of the worker that this client should talk to
-  httpGet('http://localhost:8080/start_story',{},function(data){
-    uuid = data.uuid;
-
-    worker = data.worker_name;
-    port = data.port;
-    ip = data.ip;
+  httpGet('http://' + MasterIp + ':' + MasterPort + '/start_story',{},function(data){
+  	 console.log({data});
+     if(data.error){
+        console.log("could not start story");
+     }
+     else{
+      uuid = data.uuid;
+      worker = data.worker_name;
+      port = data.port;
+      ip = data.ip;
+     }
   });
 }
 
 function getPartOfStroy(){
+  if(done){
+    console.log("story is already over");
+    return;
+  }
   partOfStory.uuid = uuid;
   url = 'http://' + ip +':' + port +'/story';
   httpGet(url,partOfStory,function(resp){
+  	console.log('getPartOfStroy ok', resp);
     if(resp.status == "ok"){
       addParagraph(resp.story);
+      temp = parseInt(partOfStory.part) + 1;
+      partOfStory.part = temp.toString();
+      done = resp.done;
     }
+    else if(resp.status == "redirect"){
+    	worker = resp.worker_name;
+    	port = resp.port;
+    	ip = resp.ip;
+    }
+  }, function() {
+  	console.log('calling redirect');
+  	Redirect();
   });
-  temp = parseInt(partOfStory.part) + 1;
-  partOfStory.part = temp.toString();
 }
 
+
+function Redirect(){
+	URL = 'http://' + MasterIp + ':' + MasterPort + '/redirect';
+	console.log('redirect to master', URL);
+	httpGet(URL,partOfStory,function(resp){
+	console.log('redirect ok', resp);
+    if(resp.status == "redirect"){
+      worker = resp.worker_name;
+    	port = resp.port;
+    	ip = resp.ip;
+    	//getPartOfStroy();
+    }
+  }, function() {
+  	//Redirect();
+  });
+}
 </script>
 
 </head>

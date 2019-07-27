@@ -1,147 +1,291 @@
 <!doctype html>
-
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-
-  <title>The HTML5 Herald</title>
-  <meta name="description" content="The HTML5 Herald">
-  <meta name="author" content="SitePoint">
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
-
-<script type="text/javascript">
-var uuid = "abc";
-var worker;
-var port = 8080;
-var ip = "127.0.0.1";
-var MasterIp = '127.0.0.1';
-var MasterPort = '8080';
-var done = false;
-var partOfStory={ 
-    uuid: uuid, 
-    part: "1"
-  };
-function test(){
-  console.log(uuid,worker,port,ip,partOfStory);
-}
-
-function httpPost(theUrl,data,callback){
-  $.ajax({
-    type: "POST",
-    headers: { 
-  //      'Accept': 'application/json',
-        'Content-Type': 'application/json' 
-    },
-    url: theUrl,
-    datg: data,
-    success: function(msg){
-          callback(msg);
-    },
-    error: function(xhr, textStatus, error) {
-        console.log(xhr.statusText);
-        console.log(textStatus);
-        console.log(error);  
-    }
-  });
-}
-
-function httpGet(theUrl,data,callback,errorCallback){
-  //use this function to do get requests to a url, give it a callback to handle the response
-  $.ajax({
-    type: "GET",
-      data: data,
-    url: theUrl,
-    success: function(msg){
-          callback(msg);
-    },
-    error: function(xhr, textStatus, error) {
-        console.log(xhr.statusText);
-        console.log(textStatus);
-        console.log(error);
-        if(errorCallback) {
-        errorCallback(); 
-        }
-    }
-  });
-}
-
-function addParagraph(value_to_display){
-  //use this function to add a <p> element to the story div
-  story_div = document.getElementsByName("story_div")[0];
-  new_paragraph = document.createElement("p"); 
-  new_paragraph.innerHTML = value_to_display;
-  story_div.appendChild(new_paragraph);
-}
-
-function startStory(){
-  //we get the uuid of this client as will be saved in the backend 
-  //we get the worker id that the master chose for this client 
-  //we get the port number of the worker that this client should talk to
-  httpGet('http://' + MasterIp + ':' + MasterPort + '/start_story',{},function(data){
-  	 console.log({data});
-     if(data.error){
-        console.log("could not start story");
-     }
-     else{
-      uuid = data.uuid;
-      worker = data.worker_name;
-      port = data.port;
-      ip = data.ip;
-     }
-  });
-}
-
-function getPartOfStroy(){
-  if(done){
-    console.log("story is already over");
-    return;
-  }
-  partOfStory.uuid = uuid;
-  url = 'http://' + ip +':' + port +'/story';
-  httpGet(url,partOfStory,function(resp){
-  	console.log('getPartOfStroy ok', resp);
-    if(resp.status == "ok"){
-      addParagraph(resp.story);
-      temp = parseInt(partOfStory.part) + 1;
-      partOfStory.part = temp.toString();
-      done = resp.done;
-    }
-  }, function() {
-  	console.log('calling redirect');
-  	Redirect();
-  });
-}
-
-
-function Redirect(){
-	URL = 'http://' + MasterIp + ':' + MasterPort + '/redirect';
-	console.log('redirect to master', URL);
-	httpGet(URL,partOfStory,function(resp){
-	console.log('redirect ok', resp);
-    if(resp.status == "redirect"){
-      worker = resp.worker_name;
-    	port = resp.port;
-    	ip = resp.ip;
-    	//getPartOfStroy();
-    }
-  }, function() {
-  	//Redirect();
-  });
-}
-</script>
-
-</head>
-
-<body>
-  <div>I Am Groot</div>
-<input type="button" value="Start New Story" onClick="startStory()">
-<input type="button" value="Get Next Part Of Story" onClick="getPartOfStroy()">
-<input type="button" value="test" onClick="test()">
-
-<div name = "story_div">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="A front-end template that helps you build fast, modern mobile web apps.">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+    <title>Erlang Project</title>
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="icon" sizes="192x192" href="images/android-desktop.png">
+    <meta name="msapplication-TileImage" content="images/touch/ms-touch-icon-144x144-precomposed.png">
+    <meta name="msapplication-TileColor" content="#3372DF">
+    <link rel="shortcut icon" href="images/favicon.png">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:regular,bold,italic,thin,light,bolditalic,black,medium&amp;lang=en">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.teal-red.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script type="text/javascript">
+    var storyInterval = null;
+    var storySpeed = 1000;
+    var uuidValue;
+    var workerName;
+    var masterName;
+    var masterIp;
+    var masterPort;
+    var workerIp;
+    var workerPort;
+    var dns = '007-lnx-e2:9000';
+    var done = false;
+    var partOfStory={ 
+      uuid: uuidValue,
+      part: "1"
+    };
   
-</div>
+    function startStory() {
+      getMasterFromDns(getWorkerFromMaster);
+      initStoryInterval(storySpeed);
+      initLogIntervals(3000);
+    }
+
+    function getMasterFromDns(func) {
+      if(!dns){
+        console.log('error: no dns adress', dns)
+      }
+      var dnsUrl = 'http://' + dns + '/get_server';
+      console.log('getting master from dns',dnsUrl); 
+      httpGet(dnsUrl,{},function(data){
+  	    console.log('master data from dns',{data});
+        if(data.error) {
+          console.log("could not get master ip:port from dns");
+        } else {
+          masterIp=data.ip;
+          masterPort=data.port;
+          func();
+        }
+      });
+    }
+
+    function getWorkerFromMaster() {
+      httpGet('http://' + masterIp + ':' + masterPort + '/start_story',{},function(data){
+  	    console.log('Master data - start story', {data});
+        if(data.error){
+          console.log("could not start story");
+        }
+        else {
+          uuidValue = data.uuid;
+          workerName = data.worker_name;
+          workerPort = data.port;
+          workerIp = data.ip;
+          masterName = 'master@' + masterIp + ':' + masterPort;
+          updateConnectionData(workerName,masterName,uuidValue);
+        }
+      });
+    }
+
+    function getPartOfStroy(){
+      if(!(workerPort && workerIp)){
+        console.log('no worker data yet');
+        return;
+      }
+      if(done){
+        console.log("story is already over");
+        stopStory();
+        return;
+      }
+      partOfStory.uuid = uuidValue;
+      url = 'http://' + workerIp +':' + workerPort +'/story';
+      httpGet(url,partOfStory,function(resp){
+        if(resp.status == "ok"){
+          addStoryParagraph(resp.story);
+          temp = parseInt(partOfStory.part) + 1;
+          partOfStory.part = temp.toString();
+          done = resp.done;
+        } else if(resp.status == "redirect"){
+    	    workerName = resp.worker_name;
+    	    workerPort = resp.port;
+    	    workerIp = resp.ip;
+        }
+        }, function() {
+  	      console.log('calling redirect');
+  	      getMasterFromDns(Redirect);
+      });
+    }
+
+    function Redirect() {
+	    URL = 'http://' + masterIp + ':' + masterPort + '/redirect';
+	    console.log('redirect to master', URL);
+	    httpGet(URL,partOfStory,function(resp){
+	      console.log('redirect ok', resp);
+        if(resp.status == "redirect"){
+          workerName = resp.worker_name;
+    	    workerPort = resp.port;
+    	    workerIp = resp.ip;
+          masterName = 'master@' + masterIp + ':' + masterPort;
+          updateConnectionData(workerName,masterName,uuidValue);
+        }
+      }, function() {});
+    }
+
+    function httpGet(theUrl,data,callback,errorCallback){
+      $.ajax({
+        type: "GET",
+        data: data,
+        url: theUrl,
+        success: function(msg){
+          if(callback){
+            callback(msg);
+          }
+        },
+        error: function(xhr, textStatus, error) {
+          console.log(xhr.statusText);
+          console.log(textStatus);
+          console.log(error);
+          if(errorCallback) {
+          errorCallback(); 
+          }
+        }
+      });
+    }
 
 
-</body>
+
+    
+function getLogsFromDns(){
+      if(done){
+        return;
+      }
+      url = 'http://' + dns +'/get_log';
+      httpGet(url,{},function(resp){
+        console.log('log from server :',resp)
+        if(resp && resp.log){
+          var temp = resp.log;
+          var logArray = temp.reverse();
+          logArray.forEach(element => {
+            if(element && Array.isArray(element)) {
+              var text = element[0];
+              var elementArray = element.slice(1);
+              elementArray.forEach(textElement => {
+                if(isNaN(textElement)) {
+                  text = text.replace('~p', textElement);
+                } else {
+                  text = text.replace('~p', textElement.toString());
+                }
+              });
+              text = text.replace('~n', '');
+              console.log('Text for log', text);
+              addLogParagraph(text);
+            }
+          });
+        }
+        }, function() {
+          console.log('error getting logs');
+      });
+    }
+    
+    function initLogIntervals(speed) {
+      setInterval(function(){
+        getLogsFromDns();
+      }, speed);
+    }
+
+    function initStoryInterval(speed) {
+      storyInterval = setInterval(function(){
+        getPartOfStroy();
+      }, speed);
+    }
+
+    function stopStory() {
+      if(storyInterval){
+        clearInterval(storyInterval);
+      }
+    }
+
+    function setSpeed(value) {
+      if(storyInterval){
+        clearInterval(storyInterval);
+        storySpeed = 3000 - value;
+        initStoryInterval(storySpeed)
+      } 
+    }
+
+    function addStoryParagraph(value_to_display){
+      story_div = document.getElementsByName("story_div")[0];
+      new_paragraph = document.createElement("p"); 
+      new_paragraph.innerHTML = value_to_display;
+      story_div.appendChild(new_paragraph);
+    }
+
+    function addLogParagraph(value_to_display){
+      log_div = document.getElementsByName("log_div")[0];
+      new_paragraph = document.createElement("p"); 
+      new_paragraph.innerHTML = value_to_display;
+      log_div.appendChild(new_paragraph);
+    }
+
+    function updateConnectionData(workerName,masterName,Uuid) {
+      addWorkerName(workerName);
+      addMasterName(masterName);
+      addUuid(Uuid);
+    }
+
+    function addWorkerName(name){
+      log_div = document.getElementsByName("worker_name")[0];
+      log_div.innerHTML = 'Worker: ' + name;
+    }
+
+    function addMasterName(name){
+      log_div = document.getElementsByName("master_name")[0];
+      log_div.innerHTML = 'Master: ' + name;
+    }
+
+    function addUuid(name){
+      log_div = document.getElementsByName("uuid_value")[0];
+      log_div.innerHTML = 'User Id: ' + name;
+    }
+
+  </script>
+  </head>
+  <body>
+    <div class="demo-layout mdl-layout mdl-layout--fixed-header mdl-js-layout mdl-color--grey-100">
+      <div class="demo-ribbon"></div>
+      <main class="demo-main mdl-layout__content">
+        <div class="demo-container mdl-grid">
+          <div class="mdl-cell mdl-cell--2-col mdl-cell--hide-tablet mdl-cell--hide-phone">
+              <button class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored" onClick="startStory()">
+                  Start Story
+              </button>
+              <button class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored" onClick="stopStory()">
+                  Stop Story
+              </button>
+              <h4>Story Speed:</h4>
+              <input class="mdl-slider mdl-js-slider" type="range" min="0" max="3000" value="1000" tabindex="0" onChange="setSpeed(value)">
+          </div>
+          <div class="demo-content mdl-color--white mdl-shadow--4dp content mdl-color-text--grey-800 mdl-cell mdl-cell--8-col" style="overflow:scroll">
+            <h3>Our Story</h3>
+            <div name = "story_div"></div>
+          </div>
+        <div class="demo-container mdl-grid">
+            <h4>System Logs: </h4>
+            <div class="log-content mdl-color--white mdl-shadow--4dp content mdl-color-text--black-800 mdl-cell mdl-cell--8-col" style="overflow:scroll">
+                <div name="log_div"></div>
+            </div>
+            <br/>
+            <br/>
+            <ul class="demo-list-icon mdl-list">
+                <li class="mdl-list__item">
+                  <span class="mdl-list__item-primary-content">
+                  <i class="material-icons mdl-list__item-icon">face</i>
+                  <span name="worker_name"></span>
+              </span>
+                </li>
+                <li class="mdl-list__item">
+                  <span class="mdl-list__item-primary-content">
+                  <i class="material-icons mdl-list__item-icon">gavel</i>
+                  <span name="master_name"></span>
+                </span>
+                </li>
+                <li class="mdl-list__item">
+                  <span class="mdl-list__item-primary-content">
+                  <i class="material-icons mdl-list__item-icon">accessibility</i>
+                  <span name="uuid_value"></span>
+                </span>
+                </li>
+              </ul>
+        </div>
+      </main>
+    </div>
+    <script src="https://code.getmdl.io/1.3.0/material.min.js"></script>
+  </body>
 </html>

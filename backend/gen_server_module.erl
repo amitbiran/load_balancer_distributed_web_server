@@ -27,12 +27,12 @@
 
 -spec(start(T :: term()) ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start({master,MasterNode,_,_,_,_}) ->
+start({master,MasterNode,_,Ip,Port,_,DnsName,DnsNode}) ->
     io:fwrite("Master start function ~n"),
-    gen_server:start_link({local, master}, ?MODULE, [{master,MasterNode,"","","",""}], []);
-start({worker,MasterNode,NodeName,Ip,Port,Alias}) ->
+    gen_server:start_link({local, master_node}, ?MODULE, [{master,MasterNode,"",Ip,Port,"",DnsName,DnsNode}], []);
+start({worker,MasterNode,NodeName,Ip,Port,Alias,DnsName,DnsNode}) ->
     io:fwrite("Worker start function ~n"),
-    gen_server:start_link({local, NodeName}, ?MODULE, [{worker,MasterNode,NodeName,Ip,Port,Alias}], []).
+    gen_server:start_link({local, NodeName}, ?MODULE, [{worker,MasterNode,NodeName,Ip,Port,Alias,DnsName,DnsNode}], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -47,13 +47,16 @@ start({worker,MasterNode,NodeName,Ip,Port,Alias}) ->
 -spec(init(Args :: term()) ->
   {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([{master,MasterNode,_,_,_,_}]) ->
+init([{master,MasterNode,_,Ip,Port,_,DnsName,DnsNode}]) ->
     io:fwrite("Master init function ~n"),
+    gen_server:cast({DnsName,DnsNode},{set_server,Ip,Port}),
     {ok, #{
+    	dnsName=>DnsName,
+    	dnsNode=>DnsNode,
         role=>master,
         master=>MasterNode,
         masterId=>0,
-        nodeName=>maste_node,
+        nodeName=>master_node,
         id=>0,
         numOfActiveServers=>0,
         numOfActiveClients=>0,
@@ -62,14 +65,14 @@ init([{master,MasterNode,_,_,_,_}]) ->
         serverClients=>#{}, %% ServerId => [Uuid list]
         clients=>#{}, %% Uuid => Server
         nodes=>#{0=>MasterNode}, %% ServerId => Node
-        nodeNames=>#{0=>master}, %% ServerId => NodeName
+        nodeNames=>#{0=>master_node}, %% ServerId => NodeName
         ip=>#{}, %% ServerId => Ip
         port=>#{},%% ServerId => Port
         idCounter=>0
     }};
-init([{worker,MasterNode,NodeName,Ip,Port,Alias}]) ->
+init([{worker,MasterNode,NodeName,Ip,Port,Alias,_,_}]) ->
     io:fwrite("Worker init function ~n"),
-    {InitalState,Node}=gen_server:call({master,MasterNode},{connect,node(),Ip,Port,NodeName,Alias}), % call main_server to connect
+    {InitalState,Node}=gen_server:call({master_node,MasterNode},{connect,node(),Ip,Port,NodeName,Alias}), % call main_server to connect
     monitor_node(Node,true),
     {ok,InitalState}.
 
@@ -94,14 +97,18 @@ handle_call({connect,Node,Ip,Port,NodeName,Alias}, From, State) ->
   Role = maps:get(role,State),
   case Role of
     worker ->
+    	log("error: connect to Worker Node ( master function but role is worker)~n",State),
         io:fwrite("error: connect to Worker Node ( master function but role is worker)~n"),
         {noreply, State};
     _Otherwise ->
+    	log(["New Worker connect to master: ~p~n",Alias],State),
         io:fwrite("New Worker connect to master: ~p~n",[Alias]),
         monitor_node(Node,true),
         {Pid,_}=From,
         NewState=updateStateForNewServer(Pid,Node,Ip,Port,NodeName,Alias,State),
         InitalState=#{
+        	dnsName=>maps:get(dnsName,NewState),
+    		dnsNode=>maps:get(dnsNode,NewState),
             role=>worker,
             master=>maps:get(master,NewState),
             masterId=>maps:get(masterId,NewState),
@@ -126,16 +133,20 @@ handle_call({new_client,Uuid}, _From, State) ->
   Role = maps:get(role,State),
   case Role of
     worker ->
+    	log(["error: handle call new_client is master function but role is worker"],State),
         io:fwrite("error: handle call new_client is master function but role is worker"),
         {noreply, State};
     _Otherwise ->
+    	log(["New client connect to master: ~p~n",Uuid],State),
         io:fwrite("New client connect to master: ~p~n",[Uuid]),
         ServerId=loadBlancerChooseServer(State),
         if
           ServerId == no_workers ->
+          	log(["client: ~p is asked to start session but there are no availabe workers for him~n",Uuid],State),
             io:fwrite("client: ~p is asked to start session but there are no availabe workers for him~n",[Uuid]),
             {reply,{no_workers},State};
           true ->
+          	log(["client: ~p is handled by server: ~p~n",Uuid, ServerId],State),
             io:fwrite("client: ~p is handled by server: ~p~n",[Uuid, ServerId]),
             NewState=updateStateForNewClient(Uuid,ServerId,State),
             updateWorkers(NewState),
@@ -147,39 +158,38 @@ handle_call({new_client,Uuid}, _From, State) ->
     end;
 %%manager updated a worker and gave him a new state
 handle_call({update_state,NewState}, _From, State) ->
+  log(["Update_state for worker ~n"],State),
   io:fwrite("Update_state for worker ~n"),
   Role = maps:get(role,State),
   case Role of
     worker -> 
          {reply,{ack_change_state,maps:get(id,State)},NewState};    
     Otherwise ->
+    	log(["error: update_state is a worker function but role is ~p",Otherwise],State),
         io:fwrite("error: update_state is a worker function but role is ~p",[Otherwise]),
         {noreply, State}
     end;
 
 %%get next part, worker function
 handle_call({get_next,UUID,Position}, _From, State) ->
-  Role = maps:get(role,State),
-  case Role of
-    master ->
-        io:fwrite("error: handle call get_next is worker function but role is master"),
-        {noreply, State};
-    _Otherwise ->
         ServerId=getFromState(clients,UUID,State),
         MyServerId=maps:get(id,State),
+        log(["get next part from client: ~p. serverId: ~p~n",UUID, MyServerId],State),
         io:fwrite("get next part from client: ~p. serverId: ~p~n",[UUID, MyServerId]),
         if
             ServerId==MyServerId ->
+            	log(["ok: get_next approved by serverId: ~p~n",MyServerId],State),
                 io:fwrite("ok: get_next approved by serverId: ~p~n",[MyServerId]),
                 {reply,{ok,Position},State};
             true ->
+              log(["error: get_next wrong server, server id should be: ~p~n",ServerId],State),
               io:fwrite("error: get_next wrong server, server id should be: ~p~n",[ServerId]),
                 Ip=getFromState(ip,ServerId,State),
                 Port=getFromState(port,ServerId,State),
                 Alias=getFromState(serverAlias,ServerId,State),
                 {reply,{not_ok,Ip,Port,Alias},State}
-        end
-    end;
+        end;
+
 
 
 %%redirect client to new worker, master function
@@ -187,6 +197,7 @@ handle_call({redirect,UUID}, _From, State) ->
   Role = maps:get(role,State),
   case Role of
     master ->
+    	log(["get new Worker for client ~p~n",UUID],State),
         io:fwrite("get new Worker for client ~p~n",[UUID]),
         ServerId=getFromState(clients,UUID,State),
         Ip=getFromState(ip,ServerId,State),
@@ -194,18 +205,14 @@ handle_call({redirect,UUID}, _From, State) ->
         Alias=getFromState(serverAlias,ServerId,State),
         {reply,{redirect,Ip,Port,Alias},State};
     _Otherwise ->
+    	log(["error: handle call redirect is master function but role is worker"],State),
         io:fwrite("error: handle call redirect is master function but role is worker"),
         {noreply, State}
   end;
 
-
-
-
-
-
-
 %TODO
 handle_call(info, _From, State) ->
+  log(["handle_call info"],State),
   io:fwrite("handle_call info~n"),
   {reply,
   {
@@ -216,10 +223,12 @@ handle_call(info, _From, State) ->
   },State};
 
 handle_call(state, _From, State) ->
+  log(["handle_call get state"],State),
   io:fwrite("handle_call get state~n"),
   {reply, {ok,State}, State};
 
 handle_call(Request, _From, State) ->
+  log(["ERROR: default handle_call"],State),
   io:fwrite("ERROR: default handle_call~n"),
   {reply, {ok,Request}, State}.
 
@@ -240,6 +249,7 @@ handle_cast({client_done,Uuid}, State) ->
     case Role of
       master ->
         ServerId = getFromState(clients,Uuid,State),
+        log(["handle cast: client done. Client Uuid: ~p, ServerId: ~p~n",Uuid,ServerId],State),
         io:fwrite("handle cast: client done. Client Uuid: ~p, ServerId: ~p~n",[Uuid,ServerId]),
         NumOfActiveClients=maps:get(numOfActiveClients,State),
         State1=maps:put(numOfActiveClients,NumOfActiveClients - 1,State),
@@ -286,13 +296,33 @@ handle_cast({client_done,Uuid}, State) ->
 
 handle_info({nodedown,Node}, State) ->
   Role = maps:get(role,State),
+  %io:fwrite("node down, state:~p~n",[State]),
+ 
   case Role of
     worker ->
-        io:fwrite("worker dont need to do shit"),
-        {noreply, State};
+        MasterNode=maps:get(master,State),
+        if
+          MasterNode == Node ->
+            log(["Master is down! ~n"],State),
+            io:fwrite("Master is down! ~n"),
+            NewMasterServerId=getNewMasterId(State),
+            MyServerId=maps:get(id,State),
+            NewState=workerHandleMasterFall(MyServerId,NewMasterServerId,State),
+            DnsName = maps:get(dnsName,NewState),
+            DnsNode = maps:get(dnsNode,NewState),
+            Ip = getFromState(ip,MyServerId,State),
+            Port = getFromState(port,MyServerId,State),
+            gen_server:cast({DnsName,DnsNode},{set_server,Ip,Port}),
+            {noreply,NewState};
+          true -> 
+          	log(["Worker down: ~p~n",Node],State),
+            io:fwrite("Worker down: ~p~n",[Node]),
+            {noreply, State}
+        end;
     _Otherwise ->
       NodesList=maps:to_list(maps:get(nodes,State)),
       LengthOfNodesList = length(NodesList),
+      log(["OMG OMG OMG Node ~p is down!\n  NodesList before deleting is ~p",Node,NodesList],State),
       io:fwrite("OMG OMG OMG Node ~p is down!\n  NodesList before deleting is ~p",[Node,NodesList]),
       if % if to handle case when the worker that was terminated was the last worker
         LengthOfNodesList == 2 -> % was the last worker, we dont update anyone we throw away all clients sadly
@@ -315,6 +345,7 @@ handle_info({nodedown,Node}, State) ->
     end.
 
 getServerIdFromNode([],_) ->
+  %log(["didnt found server id from node"],State),
   io:fwrite("didnt found server id from node"),
   ok;
 getServerIdFromNode([{ServerId,Node}|T],NodeName) ->
@@ -337,6 +368,22 @@ removeServerFromState(ServerId,State) ->
   NewState=remove_from_state_nested(port,ServerId,State6),
   NewState.
 
+removeServerFromStateForPromotion(ServerId,State) -> 
+    State1 = remove_from_state_nested(servers,ServerId,State),
+    State2 = remove_from_state_nested(serverClients,ServerId,State1),
+    State3=remove_from_state_nested(ip,ServerId,State2),
+    remove_from_state_nested(port,ServerId,State3).
+
+removeOldMaster(Id,State)->
+  NumOfActiveServers=maps:get(numOfActiveServers,State),
+  State0=maps:put(numOfActiveServers,NumOfActiveServers - 1,State),
+  State1 = remove_from_state_nested(serverAlias,Id,State0),
+  State2 = remove_from_state_nested(nodeNames,Id,State1),
+  State3 = remove_from_state_nested(nodes,Id,State2),
+  remove_from_state_nested(serverAlias,Id,State3).
+
+  
+
 removeClientsFromState([],State) -> State;
 removeClientsFromState([Uuid|T],State) -> 
   NumOfActiveClients=maps:get(numOfActiveClients,State),
@@ -349,15 +396,20 @@ addClientsAndUpdateWorkers([],State) ->
   State;
 addClientsAndUpdateWorkers([Uuid|T],State) ->
   ServerId=loadBlancerChooseServer(State),
-  NewState=updateStateForNewClient(Uuid,ServerId,State),
-  addClientsAndUpdateWorkers(T,NewState).
+  if 
+  	ServerId == no_workers -> 
+  		State;
+  	true ->	
+  		NewState=updateStateForNewClient(Uuid,ServerId,State),
+  		addClientsAndUpdateWorkers(T,NewState)
+  end.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+  log(["terminating $$$$$$$$$$$$$$$$$$$$$$$$$$$$"],State),
   io:fwrite("terminating $$$$$$$$$$$$$$$$$$$$$$$$$$$$"),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
-  io:fwrite("pikachu"),
     {ok, State}.
 
 %% Internal functions
@@ -383,7 +435,8 @@ updateStateForNewClient(UUID,ServerId,State)->
 
 loadBlancerChooseServer(State)->
     Server2ClientsMap = maps:get(serverClients,State),
-    get_shortest_list_key(Server2ClientsMap,maps:keys(Server2ClientsMap)).
+    {MinId,_} = get_shortest_list_key(Server2ClientsMap,maps:keys(Server2ClientsMap)),
+    MinId.
 
 updateWorkers(State) ->
     ServersIdList = maps:keys(maps:get(servers,State)),
@@ -412,10 +465,10 @@ remove_from_state_nested(Atom,Key,State)->
     NewInnerMapForState = maps:remove(Key,MapFromState),
     maps:update(Atom,NewInnerMapForState,State).
 
-get_shortest_list_key(_M,[])-> no_workers;
+get_shortest_list_key(_M,[])-> {no_workers,ok};
 get_shortest_list_key(M,List)->
   get_shortest_list_key(M,List,-1,2000000).
-get_shortest_list_key(_M,[],MinId,_MinVal)->MinId;
+get_shortest_list_key(_M,[],MinId,MinVal)->{MinId,MinVal};
 get_shortest_list_key(M,[Id|T],MinId,MinVal)->
   UsersList = maps:get(Id,M),
   Length = length(UsersList),
@@ -426,7 +479,7 @@ get_shortest_list_key(M,[Id|T],MinId,MinVal)->
       get_shortest_list_key(M,T,MinId,MinVal)
   end.
 
-get_longest_list_key(_M,[])-> no_workers;
+get_longest_list_key(_M,[])-> {no_workers,ok};
 get_longest_list_key(M,List)->
   get_longest_list_key(M,List,-1,-1).
 get_longest_list_key(_M,[],MaxId,MaxVal)-> {MaxId,MaxVal};
@@ -460,3 +513,69 @@ moveClientBetweenServers(DestId,SrcId,State) ->
   NewState0=maps:update(clients,NewClientsMap,State),
   NewState=maps:update(serverClients,NewServerClients,NewState0),
   NewState.
+
+getNewMasterId(State) ->
+  ServersMap=maps:get(servers,State),
+  ServerIds=maps:keys(ServersMap),
+  NewManagerId=lists:min(ServerIds),
+  NewManagerId.
+
+workerHandleMasterFall(MyServerId,MyServerId,State) ->
+  log(["New Master: ~p ~n",MyServerId],State),
+  io:fwrite("New Master: ~p ~n",[MyServerId]),
+  NewMasterId=maps:get(id,State),
+  MasterId=maps:get(masterId,State),
+  ServerClientsMap=maps:get(serverClients,State),
+  ServerClientsList=maps:get(NewMasterId,ServerClientsMap),
+  StateWithoutMaster = removeOldMaster(MasterId,State),
+  StateWithoutWorker=removeServerFromStateForPromotion(NewMasterId,StateWithoutMaster),
+  StateWithoutWorkerClients=removeClientsFromState(ServerClientsList,StateWithoutWorker),
+  StateWithNewMasterRole=maps:update(role,master,StateWithoutWorkerClients),
+  StateWithMasterId = maps:update(masterId,MyServerId,StateWithNewMasterRole),
+  StateWithNewMaster=maps:update(master,node(),StateWithMasterId),
+  %io:fwrite("workerHandleMasterFall after state change: ~p ~n",[StateWithNewMaster]),	
+  NewState=addClientsAndUpdateWorkers(ServerClientsList,StateWithNewMaster),
+ % io:fwrite("workerHandleMasterFall after update workers: ~p ~n",[NewState]),
+  monitorNodes(NewState),
+  NewState;
+workerHandleMasterFall(_MyServerId,NewMasterServerId,State) ->
+  %monitor new master node
+  log(["monitor new master: ~p ~n",NewMasterServerId],State),
+  io:fwrite("monitor new master: ~p ~n",[NewMasterServerId]),
+  NodesMap=maps:get(nodes,State),
+  Node = maps:get(NewMasterServerId,NodesMap),
+  monitor_node(Node,true),
+  State.
+
+monitorNodes(State) ->
+  NodesMap=maps:get(nodes,State),
+  NodesIds=maps:keys(NodesMap),
+  lists:foreach(fun(Id) ->
+                      Node = maps:get(Id,NodesMap),
+                      monitor_node(Node,true)
+              end, NodesIds).
+
+loadBlance(State) -> %TODO Where to call ?
+  ServerClientsMap = maps:get(serverClients,State),
+  {MaxId,MaxVal}=get_longest_list_key(ServerClientsMap,maps:keys(ServerClientsMap)),
+  {MinId,MinVal}=get_shortest_list_key(ServerClientsMap,maps:keys(ServerClientsMap)),
+  Treshold = MinVal + 1,
+    if
+      MaxVal > Treshold ->
+        NewState=moveClientBetweenServers(MinId,MaxId,State),
+        loadBlance(NewState);
+      true -> 
+        updateWorkers(State),
+        State
+    end.
+    
+log(DataToLog,State)->
+	%Id = maps:get(id,State),
+	%Alias = getFromState(serverAlias,Id,State),
+	DnsName = maps:get(dnsName,State),
+    DnsNode = maps:get(dnsNode,State),
+    %io:fwrite(MSG),
+	gen_server:cast({DnsName,DnsNode},{log,DataToLog}).
+
+
+

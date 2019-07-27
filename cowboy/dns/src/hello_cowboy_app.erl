@@ -7,6 +7,7 @@
 start(_Type, _Args) ->
         %% anything that happens here will happen before the server really starts so setting global variables is here
         BackDir = filename:dirname(element(2,file:get_cwd())),
+        io:fwrite("hello"),
         RootDir = filename:dirname(BackDir),
         FileName = filename:join([RootDir,"config","name_of_node.txt"]),
         {ok, Device} = file:open(FileName, [read]),
@@ -17,7 +18,7 @@ start(_Type, _Args) ->
         ets:insert(configTable,{node,NameOfNode}),
         io:fwrite("$$$$$$$$$$$ name of node is ~p port is ~p $$$$$$$$$$$$$$\n",[NameOfNode,Port]), 
         Dispatch = cowboy_router:compile([
-        {'_', [{"/", hello_handler, []},{"/get_server", get_server_handler, []},{"/get_log", get_log_handler, []}]}
+        {'_', [{"/", get_server_handler, []},{"/get_server", get_server_handler, []},{"/get_log", get_log_handler, []}]}
     ]),	    
     {ok, _} = cowboy:start_clear(my_http_listener,
         [{port, Port}],

@@ -97,7 +97,8 @@ createResponse({ok,Position})->
                 }
         end;
 createResponse({not_ok,Ip,Port,Alias})->
-        io_lib:format("{\"status\": \"not ok\",\"worker_name\": \"~p\",\"port\": \"~p\",\"ip\": ~p}",[Alias,Port,atom_to_list(Ip)]);
+        Body = io_lib:format("{\"status\": \"redirect\",\"worker_name\": \"~p\",\"port\": \"~p\",\"ip\": ~p}",[Alias,Port,atom_to_list(Ip)]),
+	{Body,false};
 createResponse(Other)->io:fwrite("got bad reply from worker gen_server response was ~p~n",[Other]).
 
 readLineFromFile(FileName,N)->

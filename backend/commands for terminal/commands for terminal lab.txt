@@ -1,3 +1,6 @@
+if i loose access to cowboy do su ubu then sudo -s then go to .erlang then chown 777 relx and then chmod +x relx
+
+
 0) general:
 	su ubu  --- password: local621
 	sudo -s --- password: local621
@@ -11,12 +14,19 @@
 
 1) start manger:
 	erl -sname master_node -setcookie hello_cowboy
-	gen_server_module:start({master,'master_node@007-lnx-e2',"","","",""}).
+	gen_server_module:start({master,'master_node@007-lnx-e2',"",'007-lnx-e2',8080,"",dns_node,'dns_node@007-lnx-e2'}).
 	
 2) start worker:
 	erl -sname worker1_node -setcookie hello_cowboy
-	gen_server_module:start({worker,'master_node@007-lnx-e2',worker1_node,'007-lnx-e3',8070,worker1}).
+	gen_server_module:start({worker,'master_node@007-lnx-e2',worker1_node,'007-lnx-e3',8070,worker1,dns_node,'dns_node@007-lnx-e2'}).
 
+2.5)start dns:
+	erl -sname dns_node -setcookie hello_cowboy
+    dns_module:start({dns_node,"",""}).
+    
+    to call dns use 
+    gen_server:call({dns_node,'dns_node@007-lnx-e2'},state).
+      
 3) start client:
 	python3 -m http.server
 	

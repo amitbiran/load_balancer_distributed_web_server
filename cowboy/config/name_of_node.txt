@@ -1,2 +1,2 @@
-master_node@127.0.0.1
+master_node@007-lnx-e2
 8080

@@ -30,7 +30,7 @@ initialize_user_session(Req, State) ->
     UUID = binary_to_list(generate()),
     Node_Name = get_node_name(),
     [Sname,_IpURL] = string:tokens(Node_Name,"@"),
-    ResponseFromMaster = gen_server:call({Sname,list_to_atom(Node_Name)},{new_client,UUID}),
+    ResponseFromMaster = gen_server:call({list_to_atom(Sname),list_to_atom(Node_Name)},{new_client,UUID}),
     if
         ResponseFromMaster == {no_workers} ->
             Body = "{\"error:\": \"no_workers\"}",

@@ -13,7 +13,8 @@
 
 init(Req, Opts) ->
 %io:fwrite("~p",[cowboy_req:read_urlencoded_body(Req)]),
-  Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET, POST, OPTIONS">>, Req),
+	io:fwrite("hii"),
+  	Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET, POST, OPTIONS">>, Req),
     Req2 = cowboy_req:set_resp_header(<<"access-control-allow-origin">>, <<"http://localhost:8000">>, Req1),
     Req3 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>,<<"Access-Control-Allow-Origin,content-type">>, Req2),
     {cowboy_rest, Req3, Opts}.

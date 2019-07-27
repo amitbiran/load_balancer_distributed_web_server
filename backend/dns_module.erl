@@ -100,6 +100,7 @@ handle_call(get_log, _From, State) ->
 
 handle_cast({log,MSG}, State) ->
     Log = maps:get(log,State),
+    io:fwrite("~p",[MSG])
     NewLog = [MSG|Log],
     NewState = maps:put(log,NewLog,State),
     {noreply, NewState};

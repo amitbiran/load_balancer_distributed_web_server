@@ -30,7 +30,7 @@ get_next_part(Req, State) ->
     {UUID,_Part} = get_data(Req),
     Node_Name = get_node_name(),
     [Sname,_IpURL] = string:tokens(Node_Name,"@"),
-    ResponseFromworker = gen_server:call({Sname,list_to_atom(Node_Name)},{redirect,UUID}),
+    ResponseFromworker = gen_server:call({list_to_atom(Sname),list_to_atom(Node_Name)},{redirect,UUID}),
     Body = createResponse(ResponseFromworker),
     Body2 = list_to_binary(Body),
     Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET, POST, OPTIONS">>, Req),

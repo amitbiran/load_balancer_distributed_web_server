@@ -1,0 +1,2 @@
+worker2_node@007-lnx-f3
+8060

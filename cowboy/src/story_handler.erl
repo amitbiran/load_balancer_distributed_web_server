@@ -1,4 +1,4 @@
-%% @doc REST time handler.
+%% when a client is already mapped to a worker and wish to get the next part of the story, this handler will be triggered
 -module(story_handler).
 
 %% Webmachine API
@@ -10,6 +10,7 @@
 -export([get_next_part/2]).
 -export([options/2,generate/0,get_node_name/0,get_data/1,createResponse/1]).
 
+%%will run each time the handler is triggered. 
 
 init(Req, Opts) ->
 %io:fwrite("~p",[cowboy_req:read_urlencoded_body(Req)]),
@@ -25,7 +26,8 @@ content_types_provided(Req, State) ->
     ], Req, State}.
 
 
-
+%%get the next part of the story from the server. upon request we will call the gen_server to check if this worker should provide service to the client
+%% we will parse the response and add http headers to deal with cross origins
 get_next_part(Req, State) ->
     {UUID,Part} = get_data(Req),
     Node_Name = get_node_name(),
@@ -71,14 +73,18 @@ to_hex([H|T]) ->
 to_digit(N) when N < 10 -> $0 + N;
 to_digit(N) -> $a + N-10.
 
+%%get the gen_server node name from the ets
 get_node_name()->
     [{_K,V}|_T] = ets:lookup(configTable,node),
     V.
 
+	%%get the data from the query strings inside the http request
 get_data(Req)->
     [{<<"uuid">>,UUIDb},{<<"part">>,Partb}] = cowboy_req:parse_qs(Req),
     {binary_to_list(UUIDb),binary_to_list(Partb)}.
 
+	%%if the client asked part of story from the correct worker we return the story arsed into json, if the part of the story was the last one we send a notice to the gen_server about it
+	%%if the client asked the part of the story from the wrong worker we send him a response with the details of the correct worker (ip and port)
 createResponse({ok,Position})->
         Done = (Position == "23"),
         IntPosition = erlang:list_to_integer(Position),

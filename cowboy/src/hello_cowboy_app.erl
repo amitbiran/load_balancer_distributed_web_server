@@ -4,6 +4,7 @@
 -export([start/2]).
 -export([stop/1]).
 -export([options/2]).
+%%will run on server init
 start(_Type, _Args) ->
         %% anything that happens here will happen before the server really starts so setting global variables is here
         BackDir = filename:dirname(element(2,file:get_cwd())),
@@ -13,10 +14,11 @@ start(_Type, _Args) ->
         NameOfNode = string:trim(io:get_line(Device, "")),
         Port = list_to_integer(string:trim(io:get_line(Device, ""))),
         file:close(Device),
+		%%create an ets and save in it all the info from the config files like port ip and so on
         ets:new(configTable,[set,named_table]),
         ets:insert(configTable,{node,NameOfNode}),
         io:fwrite("$$$$$$$$$$$ name of node is ~p port is ~p $$$$$$$$$$$$$$\n",[NameOfNode,Port]), 
-        Dispatch = cowboy_router:compile([
+        Dispatch = cowboy_router:compile([%%define maping of url to handlers
         {'_', [{"/", hello_handler, []},{"/redirect", redirect_handler, []},{"/start_story", new_user_handler, []},{"/story", story_handler, []},{"/info", info_handler, []}]}
     ]),
 	io:fwrite("im a groot"),	    

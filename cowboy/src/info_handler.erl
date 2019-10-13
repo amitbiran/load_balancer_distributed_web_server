@@ -1,4 +1,4 @@
-%% @doc REST time handler.
+%% this handler was created for the client to get info from the gen_server we decided not to use it but we leave it here in case we would like to expand the project
 -module(info_handler).
 
 %% Webmachine API
@@ -10,7 +10,7 @@
 -export([get_next_part/2]).
 -export([options/2,generate/0,get_node_name/0,get_data/1]).
 
-
+%%will run each time the handler is triggered.
 init(Req, Opts) ->
 %io:fwrite("~p",[cowboy_req:read_urlencoded_body(Req)]),
   Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET, POST, OPTIONS">>, Req),

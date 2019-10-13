@@ -1,4 +1,5 @@
-%% @doc REST time handler.
+%% will be triggered when a client need to be mapped to a new worker
+%% in case the client had an error while interacting with a worker he will ask the master to map him to a new workers
 -module(redirect_handler).
 
 %% Webmachine API
@@ -10,7 +11,7 @@
 -export([get_next_part/2]).
 -export([options/2,generate/0,get_node_name/0,get_data/1,createResponse/1]).
 
-
+%%will run each time the handler is triggered. 
 init(Req, Opts) ->
 %io:fwrite("~p",[cowboy_req:read_urlencoded_body(Req)]),
     Req1 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"GET, POST, OPTIONS">>, Req),
@@ -25,7 +26,7 @@ content_types_provided(Req, State) ->
     ], Req, State}.
 
 
-
+%% get response from the gen_server, add the response http headers for cross origins
 get_next_part(Req, State) ->
     {UUID,_Part} = get_data(Req),
     Node_Name = get_node_name(),
@@ -46,7 +47,7 @@ options(Req, State) ->
     {ok, Req3, State}.
 
 
-     
+    %%generate uuid
 generate() ->
     Now = {_, _, Micro} = os:timestamp(),
     Nowish = calendar:now_to_universal_time(Now),
@@ -65,14 +66,17 @@ to_hex([H|T]) ->
 to_digit(N) when N < 10 -> $0 + N;
 to_digit(N) -> $a + N-10.
 
+%%get the gen_server node name
 get_node_name()->
     [{_K,V}|_T] = ets:lookup(configTable,node),
     V.
 
+	%%when we get the http request it has some data in a form of query strings, this function extract this data
 get_data(Req)->
     [{<<"uuid">>,UUIDb},{<<"part">>,Partb}] = cowboy_req:parse_qs(Req),
     {binary_to_list(UUIDb),binary_to_list(Partb)}.
 
+	%%get the response from the gen_server and parse it into a response for the client
 createResponse({ok,Position})->
         Done = (Position == "23"),
         IntPosition = erlang:list_to_integer(Position),

@@ -293,7 +293,7 @@ handle_cast({client_done,Uuid}, State) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
 
-
+%%handle case when node falls
 handle_info({nodedown,Node}, State) ->
   Role = maps:get(role,State),
   %io:fwrite("node down, state:~p~n",[State]),
@@ -344,6 +344,7 @@ handle_info({nodedown,Node}, State) ->
       
     end.
 
+	%% get the server id by getting the node of the server
 getServerIdFromNode([],_) ->
   %log(["didnt found server id from node"],State),
   io:fwrite("didnt found server id from node"),
@@ -356,6 +357,7 @@ getServerIdFromNode([{ServerId,Node}|T],NodeName) ->
       getServerIdFromNode(T,NodeName) 
   end.
 
+  %% remove a server from the shared state of the master and the workers and update all workers this function will be called only in master
 removeServerFromState(ServerId,State) ->
   NumOfActiveServers=maps:get(numOfActiveServers,State),
   State0=maps:put(numOfActiveServers,NumOfActiveServers - 1,State),
@@ -368,12 +370,14 @@ removeServerFromState(ServerId,State) ->
   NewState=remove_from_state_nested(port,ServerId,State6),
   NewState.
 
+  %%remove the server of worker from the state before promoting it to master
 removeServerFromStateForPromotion(ServerId,State) -> 
     State1 = remove_from_state_nested(servers,ServerId,State),
     State2 = remove_from_state_nested(serverClients,ServerId,State1),
     State3=remove_from_state_nested(ip,ServerId,State2),
     remove_from_state_nested(port,ServerId,State3).
 
+	%%remopve old master when a worker replaced the master 
 removeOldMaster(Id,State)->
   NumOfActiveServers=maps:get(numOfActiveServers,State),
   State0=maps:put(numOfActiveServers,NumOfActiveServers - 1,State),
@@ -383,7 +387,7 @@ removeOldMaster(Id,State)->
   remove_from_state_nested(serverAlias,Id,State3).
 
   
-
+%% remove the client from the state when the client finished
 removeClientsFromState([],State) -> State;
 removeClientsFromState([Uuid|T],State) -> 
   NumOfActiveClients=maps:get(numOfActiveClients,State),
@@ -391,6 +395,7 @@ removeClientsFromState([Uuid|T],State) ->
   NewState=remove_from_state_nested(clients,Uuid,State1),
   removeClientsFromState(T,NewState).
 
+  %%add new client to state and update the workers
 addClientsAndUpdateWorkers([],State) -> 
   updateWorkers(State),
   State;
@@ -404,16 +409,18 @@ addClientsAndUpdateWorkers([Uuid|T],State) ->
   		addClientsAndUpdateWorkers(T,NewState)
   end.
 
+  %%triggered when server terminates
 terminate(_Reason, State) ->
   log(["terminating $$$$$$$$$$$$$$$$$$$$$$$$$$$$"],State),
   io:fwrite("terminating $$$$$$$$$$$$$$$$$$$$$$$$$$$$"),
     ok.
-
+ 
+ %%not being used
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Internal functions
-
+%%update the state when a new worker is attached to the master
 updateStateForNewServer(Pid,Node,Ip,Port,NodeName,Alias,State)->
     NumOfActiveServers = maps:get(numOfActiveServers,State),
     State1 = maps:put(numOfActiveServers,NumOfActiveServers + 1,State),
@@ -427,17 +434,20 @@ updateStateForNewServer(Pid,Node,Ip,Port,NodeName,Alias,State)->
     State8 = add_to_state_nested(ip,ServerId,Ip,State7),
     add_to_state_nested(port,ServerId,Port,State8).
 
+	%%update the state when new client start the service
 updateStateForNewClient(UUID,ServerId,State)->
     NumOfActiveClients = maps:get(numOfActiveClients,State),
     State1 = maps:put(numOfActiveClients,NumOfActiveClients+1,State),
     State2 = add_uuid_to_state(ServerId,UUID,State1),
     add_to_state_nested(clients,UUID,ServerId,State2).
 
+	%%function to load balance between the workers
 loadBlancerChooseServer(State)->
     Server2ClientsMap = maps:get(serverClients,State),
     {MinId,_} = get_shortest_list_key(Server2ClientsMap,maps:keys(Server2ClientsMap)),
     MinId.
 
+	%%send the new state to all workers in a manner that fits their state(id and so on)
 updateWorkers(State) ->
     ServersIdList = maps:keys(maps:get(servers,State)),
     updateWorkers(ServersIdList,State).
@@ -451,20 +461,24 @@ updateWorkers([Id|T],State)->
     gen_server:call({NodeName,Node},{update_state,NewState3}),
     updateWorkers(T,State).
 
+	%%get element from a nested map inside the state
 getFromState(Atom,Key,State)->
     MapFromState=maps:get(Atom,State),
     maps:get(Key,MapFromState).
 
+	%%add element to a nested map inside the state map
 add_to_state_nested(Atom,Key,Value,State)->
     MapFromState=maps:get(Atom,State),
     NewInnerMapForState = maps:put(Key,Value,MapFromState),
     maps:put(Atom,NewInnerMapForState,State).
 
+	%%rempve element from a nested map inside the state
 remove_from_state_nested(Atom,Key,State)->
     MapFromState=maps:get(Atom,State),
     NewInnerMapForState = maps:remove(Key,MapFromState),
     maps:update(Atom,NewInnerMapForState,State).
 
+	%%get shortest list of the clients lists of the workers
 get_shortest_list_key(_M,[])-> {no_workers,ok};
 get_shortest_list_key(M,List)->
   get_shortest_list_key(M,List,-1,2000000).
@@ -479,6 +493,7 @@ get_shortest_list_key(M,[Id|T],MinId,MinVal)->
       get_shortest_list_key(M,T,MinId,MinVal)
   end.
 
+  %%get longest list of the lists of the workers
 get_longest_list_key(_M,[])-> {no_workers,ok};
 get_longest_list_key(M,List)->
   get_longest_list_key(M,List,-1,-1).
@@ -493,13 +508,14 @@ get_longest_list_key(M,[Id|T],MaxId,MaxVal)->
       get_longest_list_key(M,T,MaxId,MaxVal)
   end.
 
-
+%%add uuid of a new client to state
 add_uuid_to_state(ServerId,UUID,State)->
   ServersMap = maps:get(serverClients,State),
   ClientsList = maps:get(ServerId,ServersMap),
   NewServersMap = maps:put(ServerId,[UUID|ClientsList],ServersMap),
   maps:put(serverClients,NewServersMap,State).
 
+  %%move client from one worker to the other
 moveClientBetweenServers(DestId,SrcId,State) ->
   ServerClients=maps:get(serverClients,State),
   DestClients=maps:get(DestId,ServerClients),
@@ -514,12 +530,14 @@ moveClientBetweenServers(DestId,SrcId,State) ->
   NewState=maps:update(serverClients,NewServerClients,NewState0),
   NewState.
 
+  %% get the id of the new master
 getNewMasterId(State) ->
   ServersMap=maps:get(servers,State),
   ServerIds=maps:keys(ServersMap),
   NewManagerId=lists:min(ServerIds),
   NewManagerId.
 
+  %%the function that triggerws in worker machine when master falls and the worker needs to replace him
 workerHandleMasterFall(MyServerId,MyServerId,State) ->
   log(["New Master: ~p ~n",MyServerId],State),
   io:fwrite("New Master: ~p ~n",[MyServerId]),
@@ -547,6 +565,7 @@ workerHandleMasterFall(_MyServerId,NewMasterServerId,State) ->
   monitor_node(Node,true),
   State.
 
+  %%monitor all workers
 monitorNodes(State) ->
   NodesMap=maps:get(nodes,State),
   NodesIds=maps:keys(NodesMap),
@@ -555,6 +574,7 @@ monitorNodes(State) ->
                       monitor_node(Node,true)
               end, NodesIds).
 
+			  %%not being used at the moment
 loadBlance(State) -> %TODO Where to call ?
   ServerClientsMap = maps:get(serverClients,State),
   {MaxId,MaxVal}=get_longest_list_key(ServerClientsMap,maps:keys(ServerClientsMap)),
@@ -569,6 +589,7 @@ loadBlance(State) -> %TODO Where to call ?
         State
     end.
     
+	%%send log to dns server
 log(DataToLog,State)->
 	%Id = maps:get(id,State),
 	%Alias = getFromState(serverAlias,Id,State),
